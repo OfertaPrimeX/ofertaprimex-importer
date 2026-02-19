@@ -103,7 +103,7 @@ app.post('/internal/import', async (req, res) => {
     const products = await scrapeMercadoLivre(query);
 
     let inserted = 0;
-
+//
     for (const p of products) {
       const result = await pool.query(
         `
