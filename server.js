@@ -72,7 +72,7 @@ async function importProducts(query, limit = 5) {
 // =======================
 // ENDPOINT DE IMPORTAÇÃO
 // =======================
-app.post('/import', async (req, res) => {
+app.post('/internal/import', async (req, res) => {
   try {
     if (req.headers['x-internal-key'] !== INTERNAL_KEY) {
       return res.status(401).json({ error: 'Não autorizado' });
