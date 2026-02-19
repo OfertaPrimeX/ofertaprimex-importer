@@ -1,8 +1,8 @@
 import express from 'express';
 import axios from 'axios';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import pkg from 'pg';
-
+//
 const { Pool } = pkg;
 const app = express();
 app.use(express.json());
@@ -24,21 +24,21 @@ const pool = new Pool({
 });
 
 // =======================
-// HEALTHCHECK
+// HEALTH
 // =======================
-app.get('/health', async (_, res) => {
+app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', database: 'connected' });
   } catch {
-    res.status(500).json({ status: 'db_error' });
+    res.status(500).json({ status: 'error', database: 'disconnected' });
   }
 });
 
 // =======================
-// SCRAPER ML
+// SCRAPER MERCADO LIVRE
 // =======================
-async function scrapeMercadoLivre(query, limit = 10) {
+async function importProducts(query, limit = 5) {
   const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`;
 
   const { data: html } = await axios.get(url, {
@@ -52,65 +52,50 @@ async function scrapeMercadoLivre(query, limit = 10) {
   const $ = cheerio.load(html);
   const products = [];
 
-  $('.ui-search-result').each((_, el) => {
-    if (products.length >= limit) return;
+  $('.ui-search-result').each((i, el) => {
+    if (i >= limit) return;
 
     const title = $(el).find('.ui-search-item__title').text().trim();
-    const price = $(el).find('.price-tag-fraction').first().text();
     const link = $(el).find('a.ui-search-link').attr('href');
 
-    const sellerText = $(el)
-      .find('.ui-search-official-store-label, .ui-search-item__seller-info-text')
-      .text()
-      .toLowerCase();
-
-    // FILTRO DE REPUTAÇÃO (heurístico seguro)
-    const goodSeller =
-      sellerText.includes('mercado líder') ||
-      sellerText.includes('loja oficial');
-
-    if (!title || !price || !link || !goodSeller) return;
+    if (!title || !link) return;
 
     products.push({
       platform: 'mercadolivre',
       title,
-      slug: `${query}-${title}`.toLowerCase().replace(/\W+/g, '-'),
-      price: Number(price.replace('.', '')),
+      slug: `${query}-${i}-${Date.now()}`,
+      price: null,
       thumbnail: null,
       affiliate_url: link,
       active: true
     });
   });
 
-  // ordena por menor preço
-  return products.sort((a, b) => a.price - b.price);
+  return products;
 }
 
 // =======================
 // IMPORT ENDPOINT
 // =======================
 app.post('/internal/import', async (req, res) => {
+  if (req.headers['x-internal-key'] !== INTERNAL_KEY) {
+    return res.status(401).json({ error: 'Não autorizado' });
+  }
+
+  const { query } = req.body;
+  if (!query) {
+    return res.status(400).json({ error: 'Query obrigatória' });
+  }
+
   try {
-    if (req.headers['x-internal-key'] !== INTERNAL_KEY) {
-      return res.status(401).json({ error: 'Não autorizado' });
-    }
+    const products = await importProducts(query, 5);
 
-    const { query } = req.body;
-    if (!query) {
-      return res.status(400).json({ error: 'Query obrigatória' });
-    }
-
-    const products = await scrapeMercadoLivre(query);
-
-    let inserted = 0;
-//
     for (const p of products) {
-      const result = await pool.query(
+      await pool.query(
         `
         INSERT INTO products
-          (platform, title, slug, price, thumbnail, affiliate_url, active)
-        VALUES
-          ($1,$2,$3,$4,$5,$6,$7)
+        (platform, title, slug, price, thumbnail, affiliate_url, active)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
         ON CONFLICT (slug) DO NOTHING
         `,
         [
@@ -123,16 +108,9 @@ app.post('/internal/import', async (req, res) => {
           p.active
         ]
       );
-
-      if (result.rowCount > 0) inserted++;
     }
 
-    res.json({
-      imported: inserted,
-      found: products.length,
-      status: 'ok'
-    });
-
+    res.json({ imported: products.length, status: 'ok' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno' });
