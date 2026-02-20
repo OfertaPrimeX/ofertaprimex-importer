@@ -7,24 +7,15 @@ app.use(express.json());
 
 app.use('/import', importRoutes);
 
-app.get('/health', (_, res) => res.json({ status: 'ok' }));
-
-// 🔁 JOB AUTOMÁTICO (a cada 30 minutos)
-const KEYWORDS = ['geladeira', 'tv', 'notebook'];
-
-async function runJobs() {
-  for (const q of KEYWORDS) {
-    await runMercadoLivreJob(q);
-  }
-}
-
-// primeira execução
-runJobs();
-
-// intervalo
-setInterval(runJobs, 30 * 60 * 1000);
+app.get('/health', (_, res) =>
+  res.json({ status: 'ok' })
+);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`🚀 Importer rodando na porta ${PORT}`)
-);
+
+app.listen(PORT, async () => {
+  console.log(`🚀 Importer rodando na porta ${PORT}`);
+
+  // 🔥 Dispara job inicial
+  await runMercadoLivreJob('geladeira');
+});

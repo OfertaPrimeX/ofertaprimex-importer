@@ -1,32 +1,30 @@
+import axios from 'axios';
 import { searchMercadoLivre } from '../services/mercadolivre.service.js';
-import { findLocalProducts, insertProduct } from '../services/product.service.js';
 
-export async function runMercadoLivreJob(query) {
+const BACKEND_URL = process.env.BACKEND_URL;
+const INTERNAL_KEY = process.env.INTERNAL_KEY;
+
+export async function runMercadoLivreJob(query = 'geladeira') {
   console.log(`🔍 ML JOB iniciado para: ${query}`);
 
-  // 1️⃣ Busca produtos já existentes hoje
-  const existing = await findLocalProducts(query);
-  const existingIds = new Set(existing.map(p => p.external_id));
+  const products = await searchMercadoLivre(query);
 
-  // 2️⃣ Busca no Mercado Livre
-  const imported = await searchMercadoLivre(query);
-
-  let inserted = 0;
-
-  // 3️⃣ Insere somente novos
-  for (const product of imported) {
-    if (existingIds.has(product.external_id)) continue;
-
-    await insertProduct(product);
-    inserted++;
+  if (!products.length) {
+    console.log('⚠️ Nenhum produto encontrado');
+    return;
   }
 
-  console.log(
-    `✅ ML JOB finalizado | encontrados: ${imported.length} | inseridos: ${inserted}`
+  await axios.post(
+    `${BACKEND_URL}/import/internal`,
+    { products },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': INTERNAL_KEY
+      },
+      timeout: 20000
+    }
   );
 
-  return {
-    found: imported.length,
-    inserted
-  };
+  console.log(`✅ ${products.length} produtos enviados ao backend`);
 }
