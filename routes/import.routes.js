@@ -1,5 +1,5 @@
 import express from 'express';
-//import { findLocalProducts } from '../services/product.service.js';
+//import { findLocalProducts } from '../services/product.service.js'; - não utiliza no importer excluir essa linha futuramente.
 import { searchMercadoLivre } from '../services/mercadolivre.service.js';
 
 const router = express.Router();
