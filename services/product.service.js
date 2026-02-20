@@ -43,7 +43,7 @@ export async function insertProduct(product) {
       product.price,
       product.product_url,
       product.affiliate_url,
-      product.score
+      product.score || 1
     ]
   );
 }
