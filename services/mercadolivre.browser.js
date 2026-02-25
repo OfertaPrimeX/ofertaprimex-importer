@@ -1,50 +1,67 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 
 export async function searchMercadoLivreBrowser(query, limit = 10) {
-  console.log(`🧪 Abrindo navegador Puppeteer para: ${query}`);
+  const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`;
+  console.log(`🌐 Navegando para: ${url}`);
 
   const browser = await puppeteer.launch({
     headless: 'new',
     args: [
       '--no-sandbox',
-      '--disable-setuid-sandbox'
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
     ]
   });
 
   const page = await browser.newPage();
 
+  // 🎭 User-Agent REAL (isso é crucial)
   await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+    'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/122.0.0.0 Safari/537.36'
   );
 
-  const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`;
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+  await page.setViewport({ width: 1366, height: 768 });
 
-  // Aguarda os produtos aparecerem
-  await page.waitForSelector('.ui-search-result', { timeout: 30000 });
+  await page.goto(url, {
+    waitUntil: 'networkidle2',
+    timeout: 60000
+  });
+
+  // ⏳ Aguarda qualquer card de produto (genérico)
+  await page.waitForSelector('a[href*="/MLB-"]', {
+    timeout: 30000
+  });
 
   const products = await page.evaluate((limit) => {
     const items = [];
-    const nodes = document.querySelectorAll('.ui-search-result');
+    const links = document.querySelectorAll('a[href*="/MLB-"]');
 
-    nodes.forEach((el, i) => {
-      if (i >= limit) return;
+    links.forEach((link) => {
+      if (items.length >= limit) return;
 
-      const title = el.querySelector('.ui-search-item__title')?.innerText;
-      const link = el.querySelector('a')?.href;
-      const img = el.querySelector('img')?.src || null;
-      const id = el.getAttribute('data-id');
+      const card = link.closest('div');
+      if (!card) return;
 
-      if (!title || !link || !id) return;
+      const title =
+        card.querySelector('h2')?.innerText?.trim() ||
+        link.innerText?.trim();
+
+      if (!title) return;
+
+      const img =
+        card.querySelector('img')?.src ||
+        card.querySelector('img')?.getAttribute('data-src');
 
       items.push({
         platform: 'mercadolivre',
-        external_id: id,
+        external_id: link.href.split('/').pop(),
         title,
+        thumbnail: img || null,
         price: null,
-        thumbnail: img,
-        product_url: link,
-        affiliate_url: link
+        product_url: link.href,
+        affiliate_url: link.href
       });
     });
 
@@ -53,6 +70,6 @@ export async function searchMercadoLivreBrowser(query, limit = 10) {
 
   await browser.close();
 
-  console.log(`🧪 Produtos capturados: ${products.length}`);
+  console.log(`✅ Produtos coletados: ${products.length}`);
   return products;
 }

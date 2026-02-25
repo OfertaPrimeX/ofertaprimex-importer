@@ -22,9 +22,9 @@ export async function runMercadoLivreJob(query = 'geladeira') {
         'Content-Type': 'application/json',
         'x-internal-key': INTERNAL_KEY
       },
-      timeout: 30000
+      timeout: 20000
     }
   );
 
-  console.log(`✅ ${products.length} produtos enviados ao backend`);
+  console.log(`🚀 ${products.length} produtos enviados ao backend`);
 }
