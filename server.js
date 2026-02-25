@@ -13,9 +13,6 @@ app.get('/health', (_, res) =>
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`🚀 Importer rodando na porta ${PORT}`);
-
-  // 🔥 Dispara job inicial
-  await runMercadoLivreJob('geladeira');
 });
