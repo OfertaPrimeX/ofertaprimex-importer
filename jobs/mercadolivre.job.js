@@ -1,13 +1,13 @@
 import axios from 'axios';
-import { searchMercadoLivre } from '../services/mercadolivre.service.js';
+import { searchMercadoLivreBrowser } from '../services/mercadolivre.browser.js';
 
 const BACKEND_URL = process.env.BACKEND_URL;
 const INTERNAL_KEY = process.env.INTERNAL_KEY;
 
 export async function runMercadoLivreJob(query = 'geladeira') {
-  console.log(`🔍 ML JOB iniciado para: ${query}`);
+  console.log(`🔍 ML JOB (browser) iniciado para: ${query}`);
 
-  const products = await searchMercadoLivre(query);
+  const products = await searchMercadoLivreBrowser(query);
 
   if (!products.length) {
     console.log('⚠️ Nenhum produto encontrado');
@@ -21,8 +21,7 @@ export async function runMercadoLivreJob(query = 'geladeira') {
       headers: {
         'Content-Type': 'application/json',
         'x-internal-key': INTERNAL_KEY
-      },
-      timeout: 20000
+      }
     }
   );
 
