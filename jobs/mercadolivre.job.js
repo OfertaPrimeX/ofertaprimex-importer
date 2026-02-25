@@ -21,8 +21,7 @@ export async function runMercadoLivreJob(query = 'geladeira') {
       headers: {
         'Content-Type': 'application/json',
         'x-internal-key': INTERNAL_KEY
-      },
-      timeout: 20000
+      }
     }
   );
 
