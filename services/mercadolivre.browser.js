@@ -3,42 +3,37 @@ import { chromium } from 'playwright';
 export async function searchMercadoLivreBrowser(query, limit = 10) {
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
+    ]
   });
 
   const page = await browser.newPage();
 
-  const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`;
-  console.log('🌐 Abrindo:', url);
+  await page.goto(
+    `https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`,
+    { waitUntil: 'domcontentloaded', timeout: 60000 }
+  );
 
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.ui-search-result', { timeout: 30000 });
 
-  // Aguarda os cards aparecerem
-  await page.waitForSelector('.ui-search-result', { timeout: 15000 });
-
-  const products = await page.$$eval('.ui-search-result', (items, limit) => {
-    return items.slice(0, limit).map(el => {
-      const link = el.querySelector('a')?.href || null;
-      const title =
-        el.querySelector('.ui-search-item__title')?.innerText || null;
-      const img =
-        el.querySelector('img')?.getAttribute('src') ||
-        el.querySelector('img')?.getAttribute('data-src');
-
-      return {
-        platform: 'mercadolivre',
-        external_id: el.getAttribute('data-id'),
-        title,
-        thumbnail: img,
-        price: null,
-        product_url: link,
-        affiliate_url: link
-      };
-    });
-  }, limit);
+  const products = await page.$$eval('.ui-search-result', (items, limit) =>
+    items.slice(0, limit).map(el => ({
+      platform: 'mercadolivre',
+      external_id: el.getAttribute('data-id'),
+      title: el.querySelector('.ui-search-item__title')?.innerText?.trim(),
+      product_url: el.querySelector('a')?.href,
+      affiliate_url: el.querySelector('a')?.href,
+      thumbnail:
+        el.querySelector('img')?.getAttribute('data-src') ||
+        el.querySelector('img')?.src,
+      price: null
+    })),
+    limit
+  );
 
   await browser.close();
-
-  console.log(`🧪 Produtos capturados: ${products.length}`);
   return products;
 }
