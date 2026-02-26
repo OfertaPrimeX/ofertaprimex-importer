@@ -1,12 +1,57 @@
-// COLE SEU ACCESS TOKEN AQUI (depois de criar a app no Mercado Livre)
-const ACCESS_TOKEN = ''; // Deixe vazio por enquanto, vamos testar sem token primeiro
+// CONFIGURAÇÕES DA API
+const CLIENT_ID = '7737778191417887';
+const CLIENT_SECRET = 'ILIE3mywj9F1uT4hwb4As1pbczMtCbID';
+
+// Cache do token (para não gerar toda hora)
+let accessToken = null;
+let tokenExpiraEm = null;
+
+// Função para gerar token automaticamente
+async function gerarAccessToken() {
+  // Se já tem token válido, usa ele
+  if (accessToken && tokenExpiraEm && Date.now() < tokenExpiraEm) {
+    console.log('🔄 Usando token em cache');
+    return accessToken;
+  }
+  
+  console.log('🔄 Gerando novo access token...');
+  
+  try {
+    const response = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.access_token) {
+      accessToken = data.access_token;
+      tokenExpiraEm = Date.now() + (data.expires_in * 1000);
+      console.log('✅ Token gerado com sucesso!');
+      return accessToken;
+    } else {
+      console.error('❌ Erro ao gerar token:', data);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Erro na requisição do token:', error);
+    return null;
+  }
+}
 
 function processarResultados(dados, termo) {
   if (!dados || !dados.results) return [];
   
   return dados.results.map(produto => {
-    // Calcular pontuação do vendedor
-    let pontuacao = 4.0; // padrão
+    let pontuacao = 4.0;
     
     if (produto.seller?.seller_reputation?.power_seller_status) {
       pontuacao = 5.0;
@@ -30,32 +75,27 @@ function processarResultados(dados, termo) {
   });
 }
 
-// Função para buscar produtos com token (se tiver)
-async function buscarProdutosComToken(termo) {
-  console.log(`\n🔍 Buscando: "${termo}" (com token)...`);
-  
-  const url = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(termo)}&limit=5`;
+async function buscarProdutos(termo) {
+  console.log(`\n🔍 Buscando: "${termo}"...`);
   
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    // 1. Gera/obtém o token
+    const token = await gerarAccessToken();
     
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Accept': 'application/json'
-    };
-    
-    // Só adiciona o token se ele existir
-    if (ACCESS_TOKEN) {
-      headers['Authorization'] = `Bearer ${ACCESS_TOKEN}`;
+    if (!token) {
+      console.log('❌ Não foi possível obter token');
+      return [];
     }
     
-    const resposta = await fetch(url, {
-      signal: controller.signal,
-      headers: headers
-    });
+    // 2. Faz a busca com o token
+    const url = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(termo)}&limit=5`;
     
-    clearTimeout(timeout);
+    const resposta = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
     
     if (resposta.ok) {
       const dados = await resposta.json();
@@ -63,7 +103,15 @@ async function buscarProdutosComToken(termo) {
       console.log(`✅ ${produtos.length} produtos encontrados`);
       return produtos;
     } else {
+      const erro = await resposta.text();
       console.log(`❌ Falha: ${resposta.status} - ${resposta.statusText}`);
+      
+      // Se o token expirou (401), limpa o cache e tenta de novo
+      if (resposta.status === 401) {
+        accessToken = null;
+        return await buscarProdutos(termo); // Tenta uma vez com token novo
+      }
+      
       return [];
     }
     
@@ -73,12 +121,6 @@ async function buscarProdutosComToken(termo) {
   }
 }
 
-// Função principal de busca (usada pelo index.js)
-async function buscarProdutos(termo) {
-  return await buscarProdutosComToken(termo);
-}
-
-// Função para buscar múltiplos termos
 async function buscarMultiplosTermos(termos) {
   const resultados = [];
   
@@ -91,22 +133,27 @@ async function buscarMultiplosTermos(termos) {
   return resultados;
 }
 
-// FUNÇÃO CORRIGIDA: testar conexão com Mercado Livre
 async function testarEndpointAlternativo() {
   console.log('\n🧪 Testando conexão com Mercado Livre...');
   
   try {
-    const url = 'https://api.mercadolibre.com/sites/MLB/categories';
+    const token = await gerarAccessToken();
     
+    if (!token) {
+      console.log('❌ Não foi possível obter token para teste');
+      return false;
+    }
+    
+    const url = 'https://api.mercadolibre.com/users/me';
     const resposta = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'Authorization': `Bearer ${token}`
       }
     });
     
     if (resposta.ok) {
       const dados = await resposta.json();
-      console.log(`✅ API funcionou! ${dados.length} categorias encontradas`);
+      console.log(`✅ Conectado como: ${dados.nickname || dados.id}`);
       return true;
     } else {
       console.log(`❌ API falhou: ${resposta.status}`);
@@ -119,9 +166,8 @@ async function testarEndpointAlternativo() {
   }
 }
 
-// EXPORTANDO TUDO CORRETAMENTE
 module.exports = {
   buscarProdutos,
   buscarMultiplosTermos,
-  testarEndpointAlternativo  // AGORA ESTÁ EXPORTADA!
+  testarEndpointAlternativo
 };
