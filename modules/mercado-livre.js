@@ -1,81 +1,50 @@
-const { buscarComProxy } = require('./proxy');
+// COLE SEU ACCESS TOKEN AQUI (depois de criar a app)
+const ACCESS_TOKEN = '7737778191417887'; // Preencha com seu token
 
-function processarResultados(dados, termo) {
-  if (!dados || !dados.results) return [];
+async function buscarProdutosComToken(termo) {
+  console.log(`\n🔍 Buscando: "${termo}" com token...`);
   
-  return dados.results.map(produto => {
-    let pontuacao = 4.0;
+  if (!ACCESS_TOKEN) {
+    console.log('❌ Access token não configurado!');
+    return [];
+  }
+  
+  try {
+    const url = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(termo)}&limit=5`;
     
-    if (produto.seller?.seller_reputation?.power_seller_status) {
-      pontuacao = 5.0;
-    } else if (produto.seller?.seller_reputation?.level_id) {
-      pontuacao = 4.5;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    
+    const resposta = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${ACCESS_TOKEN}`, // Token aqui!
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+      }
+    });
+    
+    clearTimeout(timeout);
+    
+    if (resposta.ok) {
+      const dados = await resposta.json();
+      console.log(`✅ Sucesso! ${dados.results?.length || 0} produtos encontrados`);
+      return processarResultados(dados, termo);
+    } else {
+      const erro = await resposta.text();
+      console.log(`❌ Falha: ${resposta.status} - ${erro.substring(0, 100)}`);
+      return [];
     }
     
-    return {
-      id_externo: produto.id,
-      titulo: produto.title,
-      preco: produto.price,
-      preco_original: produto.original_price,
-      link: produto.permalink,
-      pontuacao: pontuacao,
-      imagem: produto.thumbnail,
-      plataforma: 'mercadolivre',
-      termo_busca: termo,
-      condicao: produto.condition,
-      moeda: produto.currency_id
-    };
-  });
+  } catch (erro) {
+    console.log(`❌ Erro: ${erro.message}`);
+    return [];
+  }
 }
 
+// Substitua a função buscarProdutos para usar o token
 async function buscarProdutos(termo) {
-  console.log(`\n🔍 Buscando: "${termo}"...`);
-  
-  const url = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(termo)}&limit=5`;
-  
-  // Tenta com proxy primeiro
-  console.log(`🔄 Usando proxy para "${termo}"...`);
-  const dados = await buscarComProxy(url, termo);
-  
-  if (dados) {
-    const produtos = processarResultados(dados, termo);
-    console.log(`✅ ${produtos.length} produtos encontrados via proxy`);
-    return produtos;
-  }
-  
-  console.log(`❌ Nenhum produto encontrado para "${termo}"`);
-  return [];
+  return await buscarProdutosComToken(termo);
 }
 
-async function buscarMultiplosTermos(termos) {
-  const resultados = [];
-  
-  for (const termo of termos) {
-    const produtos = await buscarProdutos(termo);
-    resultados.push(...produtos);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  }
-  
-  return resultados;
-}
-
-async function testarEndpointAlternativo() {
-  console.log('\n🧪 Testando conexão com Mercado Livre via proxy...');
-  
-  const url = 'https://api.mercadolibre.com/sites/MLB/categories';
-  const dados = await buscarComProxy(url, 'categorias');
-  
-  if (dados) {
-    console.log(`✅ API funcionou via proxy! (${dados.length} categorias)`);
-    return true;
-  }
-  
-  console.log('❌ API completamente indisponível');
-  return false;
-}
-
-module.exports = {
-  buscarProdutos,
-  buscarMultiplosTermos,
-  testarEndpointAlternativo
-};
+// Resto do código igual (processarResultados, buscarMultiplosTermos, etc)
