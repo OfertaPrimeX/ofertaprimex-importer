@@ -1,11 +1,8 @@
-// IMPORTER PRINCIPAL COM LOOP INFINITO
-
 const { testarConexao, salvarProdutos } = require('./modules/database');
 const { buscarMultiplosTermos, testarEndpointAlternativo } = require('./modules/mercado-livre');
 const { pegarTop3, timestamp } = require('./modules/utils');
 const termos = require('./config/termos');
 
-// Função principal do importer
 async function executar() {
   console.log('\n' + '🟢'.repeat(50));
   console.log(`🚀 IMPORTER INICIADO: ${timestamp()}`);
@@ -15,15 +12,15 @@ async function executar() {
     // 1. Testar banco
     const bancoOk = await testarConexao();
     
-    // 2. TESTAR ENDPOINT ALTERNATIVO PRIMEIRO
-    console.log('\n📡 TESTANDO CONEXÃO COM MERCADO LIVRE...\n');
-    const endpointOk = await testarEndpointAlternativo();
+    // 2. Testar API do Mercado Livre
+    console.log('\n📡 TESTANDO CONEXÃO COM MERCADO LIVRE...');
+    const apiOk = await testarEndpointAlternativo();
     
-    if (!endpointOk) {
-      console.log('⚠️ Endpoints do Mercado Livre estão com problemas! Continuando mesmo assim...\n');
+    if (!apiOk) {
+      console.log('⚠️ API do Mercado Livre indisponível! Continuando mesmo assim...\n');
     }
     
-    // 3. Buscar produtos no Mercado Livre
+    // 3. Buscar produtos
     console.log('\n📡 BUSCANDO PRODUTOS...\n');
     const todosProdutos = await buscarMultiplosTermos(termos);
     
@@ -31,10 +28,9 @@ async function executar() {
     console.log('📊 RESUMO DOS PRODUTOS ENCONTRADOS:');
     console.log('⭐'.repeat(50));
     
-    // 4. MOSTRAR TODOS OS PRODUTOS ENCONTRADOS
     console.log(`\n📦 TOTAL: ${todosProdutos.length} produtos encontrados\n`);
     
-    // Agrupar por termo e mostrar
+    // Mostrar resultados
     for (const termo of termos) {
       const produtosDoTermo = todosProdutos.filter(p => p.termo_busca === termo);
       
@@ -44,13 +40,10 @@ async function executar() {
       produtosDoTermo.forEach((p, i) => {
         console.log(`\n${i+1}. ${p.titulo}`);
         console.log(`   💰 Preço: R$ ${p.preco}`);
-        console.log(`   ⭐ Pontuação vendedor: ${p.pontuacao}/5`);
-        console.log(`   🔗 Link: ${p.link ? p.link.substring(0, 80) : 'N/A'}...`);
-        console.log(`   🖼️ Imagem: ${p.imagem || 'N/A'}`);
+        console.log(`   ⭐ Pontuação: ${p.pontuacao}/5`);
       });
     }
     
-    // 5. MOSTRAR TOP 3
     console.log('\n' + '🏆'.repeat(50));
     console.log('🏆 TOP 3 PRODUTOS POR CATEGORIA:');
     console.log('🏆'.repeat(50));
@@ -61,12 +54,11 @@ async function executar() {
       
       console.log(`\n📌 ${termo.toUpperCase()}:`);
       top3.forEach((p, i) => {
-        console.log(`   ${i+1}. ${p.titulo ? p.titulo.substring(0, 60) : 'N/A'}...`);
+        console.log(`   ${i+1}. ${p.titulo?.substring(0, 60) || 'N/A'}...`);
         console.log(`      💰 R$ ${p.preco || 'N/A'} | ⭐ ${p.pontuacao || 'N/A'}/5`);
       });
     }
     
-    // 6. Salvar no banco (se estiver conectado)
     if (bancoOk && todosProdutos.length > 0) {
       console.log('\n💾 Salvando no banco de dados...');
       await salvarProdutos(todosProdutos);
@@ -85,33 +77,22 @@ async function executar() {
   }
 }
 
-// ============================================
-// MODO SERVIÇO - FICA VIVO EXECUTANDO A CADA X MINUTOS
-// ============================================
+// MODO SERVIÇO
 if (require.main === module) {
   console.log('\n' + '='.repeat(60));
   console.log('🌟 IMPORTER INICIADO EM MODO SERVIÇO');
   console.log('='.repeat(60));
   
-  // Intervalo entre execuções (30 minutos)
   const INTERVALO_MINUTOS = 30;
   const INTERVALO_MS = INTERVALO_MINUTOS * 60 * 1000;
   
-  console.log(`⏰ Executando a cada ${INTERVALO_MINUTOS} minutos`);
-  console.log(`📝 Logs detalhados serão mostrados a cada execução\n`);
+  console.log(`⏰ Executando a cada ${INTERVALO_MINUTOS} minutos\n`);
   
-  // Executa primeira vez agora
+  // Executa primeira vez
   executar();
   
   // Agenda próximas execuções
   setInterval(executar, INTERVALO_MS);
   
-  // Mantém processo vivo
   console.log('✅ Serviço rodando. Aguardando próximas execuções...\n');
-  
-  // Previne que o Node morra
-  process.on('SIGINT', () => {
-    console.log('\n👋 Importer encerrado pelo usuário');
-    process.exit(0);
-  });
 }
