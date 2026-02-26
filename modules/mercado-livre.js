@@ -1,12 +1,12 @@
-// CONFIGURAÇÕES DA API
+// COLE SEU CLIENT ID E SECRET AQUI
 const CLIENT_ID = '7737778191417887';
 const CLIENT_SECRET = 'ILIE3mywj9F1uT4hwb4As1pbczMtCbID';
 
-// Cache do token (para não gerar toda hora)
+// Cache do token
 let accessToken = null;
 let tokenExpiraEm = null;
 
-// Função para gerar token automaticamente
+// Função para gerar token com Client ID e Secret
 async function gerarAccessToken() {
   // Se já tem token válido, usa ele
   if (accessToken && tokenExpiraEm && Date.now() < tokenExpiraEm) {
@@ -14,7 +14,8 @@ async function gerarAccessToken() {
     return accessToken;
   }
   
-  console.log('🔄 Gerando novo access token...');
+  console.log('🔄 Gerando novo access token com Client ID...');
+  console.log(`   Client ID: ${CLIENT_ID.substring(0, 5)}...`); // Mostra só início por segurança
   
   try {
     const response = await fetch('https://api.mercadolibre.com/oauth/token', {
@@ -36,13 +37,14 @@ async function gerarAccessToken() {
       accessToken = data.access_token;
       tokenExpiraEm = Date.now() + (data.expires_in * 1000);
       console.log('✅ Token gerado com sucesso!');
+      console.log(`   Expira em: ${new Date(tokenExpiraEm).toLocaleTimeString()}`);
       return accessToken;
     } else {
       console.error('❌ Erro ao gerar token:', data);
       return null;
     }
   } catch (error) {
-    console.error('❌ Erro na requisição do token:', error);
+    console.error('❌ Erro na requisição do token:', error.message);
     return null;
   }
 }
@@ -78,18 +80,18 @@ function processarResultados(dados, termo) {
 async function buscarProdutos(termo) {
   console.log(`\n🔍 Buscando: "${termo}"...`);
   
+  // 1. Gera/obtém o token (AGORA VAI APARECER NO LOG)
+  const token = await gerarAccessToken();
+  
+  if (!token) {
+    console.log('❌ Não foi possível obter token');
+    return [];
+  }
+  
+  // 2. Faz a busca com o token
+  const url = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(termo)}&limit=5`;
+  
   try {
-    // 1. Gera/obtém o token
-    const token = await gerarAccessToken();
-    
-    if (!token) {
-      console.log('❌ Não foi possível obter token');
-      return [];
-    }
-    
-    // 2. Faz a busca com o token
-    const url = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(termo)}&limit=5`;
-    
     const resposta = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -103,11 +105,13 @@ async function buscarProdutos(termo) {
       console.log(`✅ ${produtos.length} produtos encontrados`);
       return produtos;
     } else {
-      const erro = await resposta.text();
+      const erroTexto = await resposta.text();
       console.log(`❌ Falha: ${resposta.status} - ${resposta.statusText}`);
+      console.log(`   Detalhe: ${erroTexto.substring(0, 100)}`);
       
       // Se o token expirou (401), limpa o cache e tenta de novo
       if (resposta.status === 401) {
+        console.log('🔄 Token expirado, tentando novamente...');
         accessToken = null;
         return await buscarProdutos(termo); // Tenta uma vez com token novo
       }
@@ -136,14 +140,15 @@ async function buscarMultiplosTermos(termos) {
 async function testarEndpointAlternativo() {
   console.log('\n🧪 Testando conexão com Mercado Livre...');
   
+  const token = await gerarAccessToken();
+  
+  if (!token) {
+    console.log('❌ Não foi possível obter token para teste');
+    return false;
+  }
+  
   try {
-    const token = await gerarAccessToken();
-    
-    if (!token) {
-      console.log('❌ Não foi possível obter token para teste');
-      return false;
-    }
-    
+    // Testa com o endpoint /users/me (que sempre funciona com token válido)
     const url = 'https://api.mercadolibre.com/users/me';
     const resposta = await fetch(url, {
       headers: {
@@ -154,6 +159,8 @@ async function testarEndpointAlternativo() {
     if (resposta.ok) {
       const dados = await resposta.json();
       console.log(`✅ Conectado como: ${dados.nickname || dados.id}`);
+      console.log(`   Site: ${dados.site_id}`);
+      console.log(`   Status: ${dados.status?.site_status || 'ativo'}`);
       return true;
     } else {
       console.log(`❌ API falhou: ${resposta.status}`);
