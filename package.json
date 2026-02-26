@@ -5,13 +5,16 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "postinstall": "npx playwright install chromium && npx playwright install-deps",
+    "test": "node teste-final.js"
   },
   "dependencies": {
     "pg": "^8.11.0",
     "dotenv": "^16.0.3",
     "axios": "^1.6.2",
-    "https-proxy-agent": "^7.0.2"
+    "https-proxy-agent": "^7.0.2",
+    "playwright": "^1.40.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
