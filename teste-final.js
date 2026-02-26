@@ -1,72 +1,47 @@
 const { chromium } = require('playwright');
 
 async function testar() {
-  console.log('🚀 Iniciando teste...');
-  console.log('📅 Data:', new Date().toLocaleString());
-  
-  let browser = null;
+  console.log('🚀 INICIANDO TESTE FINAL');
+  console.log('='.repeat(40));
   
   try {
-    console.log('🔄 Lançando navegador...');
-    browser = await chromium.launch({
+    console.log('🔄 Lançando Chromium...');
+    const browser = await chromium.launch({
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
+        '--disable-dev-shm-usage'
       ]
     });
-    console.log('✅ Navegador iniciado');
+    console.log('✅ Chromium iniciado com sucesso!');
     
     const page = await browser.newPage();
     console.log('✅ Página criada');
     
-    console.log('🔄 Acessando Mercado Livre...');
-    await page.goto('https://lista.mercadolivre.com.br/ps5', {
-      waitUntil: 'domcontentloaded',
-      timeout: 30000
+    console.log('🔄 Acessando site de teste...');
+    await page.goto('https://example.com', { 
+      timeout: 15000,
+      waitUntil: 'domcontentloaded'
     });
-    console.log('✅ Página carregada');
+    console.log('✅ Site acessado!');
     
     const titulo = await page.title();
     console.log(`📌 Título da página: ${titulo}`);
     
-    // Aguarda um pouco para carregar os produtos
-    await page.waitForTimeout(2000);
+    const url = page.url();
+    console.log(`📌 URL atual: ${url}`);
     
-    // Tenta encontrar produtos
-    const produtos = await page.$$eval('.ui-search-layout__item', items => {
-      return items.map(item => {
-        const titulo = item.querySelector('.ui-search-item__title')?.innerText;
-        const preco = item.querySelector('.andes-money-amount__fraction')?.innerText;
-        return { titulo, preco };
-      });
-    });
-    
-    console.log(`📊 Produtos encontrados: ${produtos.length}`);
-    
-    if (produtos.length > 0) {
-      console.log('\n📌 Primeiros 3 produtos:');
-      produtos.slice(0, 3).forEach((p, i) => {
-        console.log(`\n${i+1}. ${p.titulo || 'N/A'}`);
-        console.log(`   💰 R$ ${p.preco || 'N/A'}`);
-      });
-    } else {
-      // Verifica se está bloqueado
-      const html = await page.content();
-      if (html.includes('acesse sua conta') || html.includes('Mantén presionado')) {
-        console.log('⚠️ Bloqueio detectado! Mercado Livre pedindo login/desafio');
-      }
-    }
-    
+    console.log('🔄 Fechando navegador...');
     await browser.close();
-    console.log('\n✅ Teste concluído com sucesso!');
+    console.log('✅ Navegador fechado');
+    
+    console.log('='.repeat(40));
+    console.log('✅ TESTE CONCLUÍDO COM SUCESSO!');
     
   } catch (erro) {
-    console.log('❌ Erro:', erro.message);
-    if (browser) await browser.close();
+    console.log('❌ ERRO:', erro.message);
+    console.log('📋 Detalhes:', erro);
   }
 }
 
