@@ -44,5 +44,4 @@ async function testar() {
     console.log('📋 Detalhes:', erro);
   }
 }
-
 testar();
