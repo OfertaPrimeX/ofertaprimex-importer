@@ -30,5 +30,4 @@ async function testar() {
     console.log('❌ Erro:', erro.message);
   }
 }
-
 testar();
