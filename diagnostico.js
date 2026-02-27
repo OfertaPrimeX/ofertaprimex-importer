@@ -2,6 +2,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
+
 // CONFIGURAÇÕES
 const FRONTEND_PATHS = [
   '/app/public',              // Se for Node/React
