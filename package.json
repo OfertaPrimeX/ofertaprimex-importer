@@ -6,15 +6,14 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "postinstall": "npx playwright install chromium && npx playwright install-deps",
-    "test": "node teste-final.js"
+    "test:ml": "node teste-mercado.js",
+    "test:ml:ps5": "node teste-mercado.js ps5",
+    "test:ml:iphone": "node teste-mercado.js iphone"
   },
   "dependencies": {
-    "pg": "^8.11.0",
-    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
     "axios": "^1.6.2",
-    "https-proxy-agent": "^7.0.2",
-    "playwright": "^1.40.0"
+    "dotenv": "^16.0.3"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
