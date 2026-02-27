@@ -2,40 +2,29 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-
-// CONFIGURAÇÕES
-const FRONTEND_PATHS = [
-  '/app/public',              // Se for Node/React
-  '/usr/share/nginx/html',    // Se for Nginx
-  '/var/www/html'             // Se for Apache
-];
+// CONFIGURAÇÃO FIXA - você já criou a pasta
+const PASTA_DIAGNOSTICO = '/app/public/diagnostico'; // Ajuste se o caminho for diferente
 
 async function diagnosticarMercadoLivre(termo) {
   console.log(`\n🔍 Diagnosticando "${termo}"...`);
+  console.log('='.repeat(50));
   
   let browser = null;
   const timestamp = Date.now();
-  const nomePasta = `diagnostico-${termo}-${timestamp}`;
-  
-  // Descobrir qual pasta do frontend existe
-  let pastaFrontend = null;
-  for (const pasta of FRONTEND_PATHS) {
-    if (fs.existsSync(pasta)) {
-      pastaFrontend = path.join(pasta, nomePasta);
-      console.log(`✅ Pasta frontend encontrada: ${pasta}`);
-      break;
-    }
-  }
-  
-  if (!pastaFrontend) {
-    console.log('❌ Pasta do frontend não encontrada!');
-    return;
-  }
+  const nomeArquivo = `diagnostico-${termo}-${timestamp}`;
   
   try {
-    // Criar pasta no frontend
-    fs.mkdirSync(pastaFrontend, { recursive: true });
-    console.log(`📁 Pasta criada no frontend: ${nomePasta}`);
+    // Verificar se a pasta existe
+    if (!fs.existsSync(PASTA_DIAGNOSTICO)) {
+      console.log(`❌ Pasta ${PASTA_DIAGNOSTICO} não encontrada!`);
+      console.log('📌 Verifique se o caminho está correto:');
+      console.log('   - /app/public/diagnostico');
+      console.log('   - /usr/share/nginx/html/diagnostico');
+      console.log('   - /var/www/html/diagnostico');
+      return;
+    }
+    
+    console.log(`✅ Pasta encontrada: ${PASTA_DIAGNOSTICO}`);
     
     browser = await chromium.launch({
       headless: true,
@@ -44,14 +33,10 @@ async function diagnosticarMercadoLivre(termo) {
     
     const page = await browser.newPage();
     
-    // Monitorar requisições
-    const requisicoes = [];
-    page.on('request', request => {
-      requisicoes.push({
-        url: request.url(),
-        metodo: request.method(),
-        tipo: request.resourceType()
-      });
+    // Headers de navegador real
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     });
     
     const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(termo)}`;
@@ -62,21 +47,21 @@ async function diagnosticarMercadoLivre(termo) {
       timeout: 30000 
     });
     
-    // 1. SALVAR PRINT
+    // 1. SALVAR SCREENSHOT (sobrescreve o último)
     console.log('📸 Salvando screenshot...');
-    const screenshotPath = path.join(pastaFrontend, 'screenshot.png');
+    const screenshotPath = path.join(PASTA_DIAGNOSTICO, 'screenshot.png');
     await page.screenshot({ 
       path: screenshotPath,
       fullPage: true
     });
-    console.log(`✅ Screenshot salvo`);
+    console.log(`✅ Screenshot atualizado`);
     
-    // 2. SALVAR HTML
+    // 2. SALVAR HTML (sobrescreve o último)
     console.log('📄 Salvando HTML...');
-    const htmlPath = path.join(pastaFrontend, 'pagina.html');
+    const htmlPath = path.join(PASTA_DIAGNOSTICO, 'pagina.html');
     const html = await page.content();
     fs.writeFileSync(htmlPath, html);
-    console.log(`✅ HTML salvo`);
+    console.log(`✅ HTML atualizado`);
     
     // 3. CAPTURAR INFORMAÇÕES
     const titulo = await page.title();
@@ -88,48 +73,42 @@ async function diagnosticarMercadoLivre(termo) {
     
     if (html.includes('acesse sua conta') || html.includes('faça login')) {
       bloqueio = 'login_required';
-      mensagem = 'Página pedindo login';
+      mensagem = '🔒 Página pedindo login';
     } else if (html.includes('Mantén presionado') || html.includes('Segure pressionado')) {
       bloqueio = 'challenge';
-      mensagem = 'Desafio de segurança';
+      mensagem = '🛡️ Desafio de segurança';
     } else if (html.includes('403') || html.includes('Forbidden')) {
       bloqueio = 'forbidden';
-      mensagem = 'Acesso proibido';
+      mensagem = '🚫 Acesso proibido (403)';
     }
     
     // Contar produtos
-    const seletores = [
-      '.ui-search-layout__item',
-      '.ui-search-result',
-      '.andes-card',
-      '.shops__items-group'
-    ];
-    
     let produtosEncontrados = 0;
-    let seletorFuncional = null;
-    
-    for (const seletor of seletores) {
-      const count = await page.$$eval(seletor, items => items.length);
-      if (count > 0) {
-        produtosEncontrados = count;
-        seletorFuncional = seletor;
-        break;
-      }
+    try {
+      produtosEncontrados = await page.$$eval('.ui-search-layout__item', items => items.length);
+    } catch (e) {
+      console.log('⚠️ Erro ao contar produtos:', e.message);
     }
     
-    // 4. GERAR VISUALIZAÇÃO HTML PRINCIPAL
-    const visualizacaoPath = path.join(pastaFrontend, 'index.html');
-    const visualizacaoHtml = `
+    // 4. GERAR INDEX.HTML (sobrescreve o último)
+    console.log('📝 Gerando página de visualização...');
+    const indexPath = path.join(PASTA_DIAGNOSTICO, 'index.html');
+    
+    const dataAtual = new Date().toLocaleString('pt-BR');
+    const statusClass = bloqueio ? 'erro' : (produtosEncontrados > 0 ? 'sucesso' : 'atencao');
+    const statusTexto = bloqueio ? mensagem : (produtosEncontrados > 0 ? '✅ FUNCIONANDO' : '⚠️ SEM PRODUTOS');
+    
+    const indexHtml = `
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-  <title>Diagnóstico Mercado Livre - ${termo}</title>
+  <title>Diagnóstico Mercado Livre</title>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
       padding: 20px;
@@ -159,54 +138,42 @@ async function diagnosticarMercadoLivre(termo) {
       box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
     .status { 
-      font-size: 1.3em; 
+      font-size: 1.5em; 
       padding: 20px; 
       border-radius: 10px; 
       margin-bottom: 20px;
       text-align: center;
+      font-weight: bold;
     }
-    .status.sucesso { background: #d4edda; color: #155724; border-left: 5px solid #28a745; }
-    .status.erro { background: #f8d7da; color: #721c24; border-left: 5px solid #dc3545; }
-    .status.atencao { background: #fff3cd; color: #856404; border-left: 5px solid #ffc107; }
+    .status.sucesso { background: #d4edda; color: #155724; border: 2px solid #28a745; }
+    .status.erro { background: #f8d7da; color: #721c24; border: 2px solid #dc3545; }
+    .status.atencao { background: #fff3cd; color: #856404; border: 2px solid #ffc107; }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 25px;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
       margin: 25px 0;
     }
-    .preview-card {
+    .info-box {
       background: white;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      transition: transform 0.3s;
-    }
-    .preview-card:hover { transform: translateY(-5px); }
-    .preview-card img { width: 100%; height: 200px; object-fit: cover; }
-    .preview-card .info { padding: 15px; }
-    .preview-card h3 { margin-bottom: 10px; color: #333; }
-    .preview-card a { 
-      display: inline-block; 
-      padding: 8px 15px; 
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      text-decoration: none;
-      border-radius: 5px;
-      margin-top: 10px;
-    }
-    .detalhes {
-      background: #2d2d2d;
-      color: #fff;
       padding: 20px;
       border-radius: 10px;
-      font-family: 'Courier New', monospace;
-      overflow-x: auto;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
+    .info-box h3 { color: #667eea; margin-bottom: 15px; }
+    .preview {
+      margin: 25px 0;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .preview img { width: 100%; height: auto; display: block; }
     .acoes {
       display: flex;
       gap: 15px;
       flex-wrap: wrap;
       margin: 25px 0;
+      justify-content: center;
     }
     .btn {
       padding: 15px 30px;
@@ -216,80 +183,92 @@ async function diagnosticarMercadoLivre(termo) {
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
-      transition: transform 0.3s;
+      transition: all 0.3s;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
+      font-weight: bold;
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
     }
-    .btn:hover { transform: scale(1.05); }
-    .btn.secondary { background: #6c757d; }
-    .timestamp { color: #666; margin: 20px 0; text-align: right; }
-    .url { word-break: break-all; background: #eee; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    .btn:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.6);
+    }
+    .btn.secondary { 
+      background: #6c757d;
+      box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+    }
+    .btn.secondary:hover { box-shadow: 0 8px 20px rgba(108, 117, 125, 0.6); }
+    .url-box {
+      background: #2d2d2d;
+      color: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: monospace;
+      word-break: break-all;
+      margin: 15px 0;
+    }
+    .timestamp {
+      text-align: right;
+      color: #666;
+      margin-top: 20px;
+      font-style: italic;
+    }
+    .detalhe {
+      background: #e3f2fd;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-size: 0.9em;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>🛍️ Diagnóstico Mercado Livre</h1>
-      <p>Busca: "${termo}"</p>
+      <h1>🛒 Diagnóstico Mercado Livre</h1>
+      <p>Resultado da busca por: <strong>${termo}</strong></p>
     </div>
     
     <div class="content">
-      <div class="card">
-        <div class="status ${bloqueio ? 'erro' : produtosEncontrados > 0 ? 'sucesso' : 'atencao'}">
-          <strong>Status:</strong> ${bloqueio ? mensagem : (produtosEncontrados > 0 ? '✅ SUCESSO' : '⚠️ Sem produtos')}
+      <div class="status ${statusClass}">
+        ${statusTexto}
+      </div>
+      
+      <div class="grid">
+        <div class="info-box">
+          <h3>📊 Informações</h3>
+          <p><strong>Título da página:</strong> ${titulo}</p>
+          <p><strong>Produtos encontrados:</strong> ${produtosEncontrados}</p>
+          <p><strong>Data:</strong> ${dataAtual}</p>
         </div>
         
-        <p><strong>Título da página:</strong> ${titulo}</p>
-        <p><strong>URL final:</strong></p>
-        <div class="url">${urlAtual}</div>
-        <p><strong>Produtos encontrados:</strong> ${produtosEncontrados}</p>
-        ${seletorFuncional ? `<p><strong>Seletor que funcionou:</strong> ${seletorFuncional}</p>` : ''}
-        <p class="timestamp">Diagnóstico gerado em: ${new Date().toLocaleString()}</p>
+        <div class="info-box">
+          <h3>🔗 URL Acessada</h3>
+          <div class="url-box">${urlAtual}</div>
+        </div>
       </div>
+      
+      ${bloqueio ? `
+      <div class="detalhe">
+        <strong>🚫 Bloqueio detectado:</strong> ${mensagem}
+        <p style="margin-top: 10px; color: #666;">O Mercado Livre identificou acesso automatizado e está bloqueando.</p>
+      </div>
+      ` : ''}
       
       <div class="acoes">
         <a href="screenshot.png" target="_blank" class="btn">📸 Ver Screenshot</a>
         <a href="pagina.html" target="_blank" class="btn">📄 Ver HTML</a>
-        <a href="#" onclick="window.location.reload()" class="btn secondary">🔄 Atualizar</a>
+        <a href="/" class="btn secondary">🏠 Voltar ao início</a>
       </div>
       
-      <h2>📸 Preview do Screenshot</h2>
-      <div class="preview-card">
-        <img src="screenshot.png" alt="Screenshot">
-        <div class="info">
-          <h3>Screenshot da página</h3>
-          <a href="screenshot.png" target="_blank">Ver em tela cheia</a>
-        </div>
+      <h2 style="margin: 30px 0 15px;">📸 Screenshot da Página</h2>
+      <div class="preview">
+        <img src="screenshot.png" alt="Screenshot da busca no Mercado Livre" onclick="window.open('screenshot.png')">
       </div>
       
-      <h2>📋 Diagnóstico Detalhado</h2>
-      <div class="grid">
-        <div class="preview-card">
-          <div class="info">
-            <h3>${html.length} caracteres</h3>
-            <p>HTML completo da página</p>
-            <a href="pagina.html" target="_blank">Abrir HTML</a>
-          </div>
-        </div>
-        
-        <div class="preview-card">
-          <div class="info">
-            <h3>${requisicoes.length} requisições</h3>
-            <p>Monitoradas durante o carregamento</p>
-            <a href="#" onclick="alert(JSON.stringify(${JSON.stringify(requisicoes.slice(0, 10))}, null, 2))">Ver primeiras 10</a>
-          </div>
-        </div>
-      </div>
-      
-      <h2>📌 Como acessar estes arquivos</h2>
-      <div class="detalhes">
-        <p>URLs diretas:</p>
-        <ul style="margin-top: 10px; list-style: none;">
-          <li>• <strong>Screenshot:</strong> <a href="screenshot.png" target="_blank" style="color: #ffd700;">/diagnostico/screenshot.png</a></li>
-          <li>• <strong>HTML:</strong> <a href="pagina.html" target="_blank" style="color: #ffd700;">/diagnostico/pagina.html</a></li>
-          <li>• <strong>Esta página:</strong> /diagnostico/</li>
-        </ul>
-        <p style="margin-top: 15px;">📎 Caminho completo: https://ofertaprimex.com.br/diagnostico/</p>
+      <div class="timestamp">
+        ⏰ Última atualização: ${dataAtual}<br>
+        <small>Os arquivos screenshot.png e pagina.html são sobrescritos a cada novo diagnóstico</small>
       </div>
     </div>
   </div>
@@ -297,24 +276,16 @@ async function diagnosticarMercadoLivre(termo) {
 </html>
     `;
     
-    fs.writeFileSync(visualizacaoPath, visualizacaoHtml);
+    fs.writeFileSync(indexPath, indexHtml);
     
-    // 5. CRIAR ARQUIVO .htaccess OU Nginx config (opcional)
-    const htaccessPath = path.join(pastaFrontend, '.htaccess');
-    const htaccessContent = `
-Options +Indexes
-DirectoryIndex index.html
-    `;
-    fs.writeFileSync(htaccessPath, htaccessContent);
-    
-    console.log('\n' + '='.repeat(50));
-    console.log('✅ DIAGNÓSTICO CONCLUÍDO!');
-    console.log('='.repeat(50));
-    console.log(`📁 Pasta no frontend: /${nomePasta}`);
-    console.log(`🌐 Acesse: https://ofertaprimex.com.br/${nomePasta}/`);
-    console.log(`📸 Screenshot: https://ofertaprimex.com.br/${nomePasta}/screenshot.png`);
-    console.log(`📄 HTML: https://ofertaprimex.com.br/${nomePasta}/pagina.html`);
-    console.log('='.repeat(50));
+    console.log('\n' + '⭐'.repeat(40));
+    console.log('✅ DIAGNÓSTICO FINALIZADO COM SUCESSO!');
+    console.log('⭐'.repeat(40));
+    console.log(`📁 Arquivos salvos em: ${PASTA_DIAGNOSTICO}`);
+    console.log(`🌐 Acesse: https://ofertaprimex.com.br/diagnostico/`);
+    console.log(`📸 Screenshot: https://ofertaprimex.com.br/diagnostico/screenshot.png`);
+    console.log(`📄 HTML: https://ofertaprimex.com.br/diagnostico/pagina.html`);
+    console.log('⭐'.repeat(40));
     
     await browser.close();
     
@@ -325,5 +296,5 @@ DirectoryIndex index.html
   }
 }
 
-// Executar
+// Executar a busca
 diagnosticarMercadoLivre('ps5');
