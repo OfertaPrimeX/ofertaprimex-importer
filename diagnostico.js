@@ -2,20 +2,43 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
+// CONFIGURAÇÕES
+const FRONTEND_PATHS = [
+  '/app/public',              // Se for Node/React
+  '/usr/share/nginx/html',    // Se for Nginx
+  '/var/www/html'             // Se for Apache
+];
+
 async function diagnosticarMercadoLivre(termo) {
   console.log(`\n🔍 Diagnosticando "${termo}"...`);
   
   let browser = null;
-  const pastaResultados = `diagnostico-${termo}-${Date.now()}`;
+  const timestamp = Date.now();
+  const nomePasta = `diagnostico-${termo}-${timestamp}`;
+  
+  // Descobrir qual pasta do frontend existe
+  let pastaFrontend = null;
+  for (const pasta of FRONTEND_PATHS) {
+    if (fs.existsSync(pasta)) {
+      pastaFrontend = path.join(pasta, nomePasta);
+      console.log(`✅ Pasta frontend encontrada: ${pasta}`);
+      break;
+    }
+  }
+  
+  if (!pastaFrontend) {
+    console.log('❌ Pasta do frontend não encontrada!');
+    return;
+  }
   
   try {
-    // Criar pasta para os resultados
-    fs.mkdirSync(pastaResultados, { recursive: true });
-    console.log(`📁 Pasta criada: ${pastaResultados}`);
+    // Criar pasta no frontend
+    fs.mkdirSync(pastaFrontend, { recursive: true });
+    console.log(`📁 Pasta criada no frontend: ${nomePasta}`);
     
     browser = await chromium.launch({
       headless: true,
-      args: ['--no-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
     const page = await browser.newPage();
@@ -38,21 +61,21 @@ async function diagnosticarMercadoLivre(termo) {
       timeout: 30000 
     });
     
-    // 1. SALVAR PRINT (CORRIGIDO - sem quality)
+    // 1. SALVAR PRINT
     console.log('📸 Salvando screenshot...');
-    const screenshotPath = path.join(pastaResultados, 'screenshot.png');
+    const screenshotPath = path.join(pastaFrontend, 'screenshot.png');
     await page.screenshot({ 
       path: screenshotPath,
       fullPage: true
     });
-    console.log(`✅ Screenshot salvo: ${screenshotPath}`);
+    console.log(`✅ Screenshot salvo`);
     
     // 2. SALVAR HTML
     console.log('📄 Salvando HTML...');
-    const htmlPath = path.join(pastaResultados, 'pagina.html');
+    const htmlPath = path.join(pastaFrontend, 'pagina.html');
     const html = await page.content();
     fs.writeFileSync(htmlPath, html);
-    console.log(`✅ HTML salvo: ${htmlPath}`);
+    console.log(`✅ HTML salvo`);
     
     // 3. CAPTURAR INFORMAÇÕES
     const titulo = await page.title();
@@ -73,7 +96,7 @@ async function diagnosticarMercadoLivre(termo) {
       mensagem = 'Acesso proibido';
     }
     
-    // Tentar contar produtos (vários seletores possíveis)
+    // Contar produtos
     const seletores = [
       '.ui-search-layout__item',
       '.ui-search-result',
@@ -93,95 +116,180 @@ async function diagnosticarMercadoLivre(termo) {
       }
     }
     
-    // 4. GERAR RELATÓRIO HTML
-    const relatorioPath = path.join(pastaResultados, 'relatorio.html');
-    const relatorioHtml = gerarRelatorioHTML({
-      termo,
-      titulo,
-      url: urlAtual,
-      bloqueio,
-      mensagem,
-      produtosEncontrados,
-      seletorFuncional,
-      requisicoes: requisicoes.slice(0, 20), // Primeiras 20 requisições
-      pasta: pastaResultados
-    });
-    
-    fs.writeFileSync(relatorioPath, relatorioHtml);
-    console.log(`✅ Relatório salvo: ${relatorioPath}`);
-    
-    // 5. CRIAR ARQUIVO DE VISUALIZAÇÃO RÁPIDA
-    const visualizacaoPath = path.join(pastaResultados, 'VER_RESULTADO.html');
+    // 4. GERAR VISUALIZAÇÃO HTML PRINCIPAL
+    const visualizacaoPath = path.join(pastaFrontend, 'index.html');
     const visualizacaoHtml = `
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Resultado da Busca - ${termo}</title>
+  <title>Diagnóstico Mercado Livre - ${termo}</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { font-family: Arial; padding: 20px; background: #1e1e1e; color: #fff; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    .card { background: #2d2d2d; border-radius: 10px; padding: 20px; margin: 20px 0; }
-    h1 { color: #ffd700; }
-    .status { font-size: 1.2em; padding: 10px; border-radius: 5px; }
-    .erro { background: #662222; }
-    .sucesso { background: #226622; }
-    .atencao { background: #666622; }
-    .arquivos { list-style: none; padding: 0; }
-    .arquivos li { margin: 10px 0; }
-    .arquivos a { 
-      color: #ffd700; 
-      text-decoration: none;
-      display: block;
-      padding: 15px;
-      background: #3d3d3d;
-      border-radius: 5px;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
     }
-    .arquivos a:hover { background: #4d4d4d; }
-    .screenshot-preview { 
-      max-width: 100%; 
-      border: 3px solid #ffd700;
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      background: white; 
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+    .header p { opacity: 0.9; font-size: 1.2em; }
+    .content { padding: 30px; }
+    .card { 
+      background: #f8f9fa; 
+      border-radius: 15px; 
+      padding: 25px; 
+      margin-bottom: 25px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .status { 
+      font-size: 1.3em; 
+      padding: 20px; 
+      border-radius: 10px; 
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .status.sucesso { background: #d4edda; color: #155724; border-left: 5px solid #28a745; }
+    .status.erro { background: #f8d7da; color: #721c24; border-left: 5px solid #dc3545; }
+    .status.atencao { background: #fff3cd; color: #856404; border-left: 5px solid #ffc107; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 25px;
+      margin: 25px 0;
+    }
+    .preview-card {
+      background: white;
       border-radius: 10px;
-      margin: 20px 0;
+      overflow: hidden;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      transition: transform 0.3s;
     }
+    .preview-card:hover { transform: translateY(-5px); }
+    .preview-card img { width: 100%; height: 200px; object-fit: cover; }
+    .preview-card .info { padding: 15px; }
+    .preview-card h3 { margin-bottom: 10px; color: #333; }
+    .preview-card a { 
+      display: inline-block; 
+      padding: 8px 15px; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+      margin-top: 10px;
+    }
+    .detalhes {
+      background: #2d2d2d;
+      color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      overflow-x: auto;
+    }
+    .acoes {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      margin: 25px 0;
+    }
+    .btn {
+      padding: 15px 30px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.1em;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: transform 0.3s;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .btn:hover { transform: scale(1.05); }
+    .btn.secondary { background: #6c757d; }
+    .timestamp { color: #666; margin: 20px 0; text-align: right; }
+    .url { word-break: break-all; background: #eee; padding: 10px; border-radius: 5px; margin: 10px 0; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🔍 Resultado da Busca: ${termo}</h1>
+    <div class="header">
+      <h1>🛍️ Diagnóstico Mercado Livre</h1>
+      <p>Busca: "${termo}"</p>
+    </div>
     
-    <div class="card">
-      <div class="status ${bloqueio ? 'erro' : produtosEncontrados > 0 ? 'sucesso' : 'atencao'}">
-        <strong>Status:</strong> ${bloqueio || (produtosEncontrados > 0 ? 'SUCESSO' : 'Sem produtos')}
+    <div class="content">
+      <div class="card">
+        <div class="status ${bloqueio ? 'erro' : produtosEncontrados > 0 ? 'sucesso' : 'atencao'}">
+          <strong>Status:</strong> ${bloqueio ? mensagem : (produtosEncontrados > 0 ? '✅ SUCESSO' : '⚠️ Sem produtos')}
+        </div>
+        
+        <p><strong>Título da página:</strong> ${titulo}</p>
+        <p><strong>URL final:</strong></p>
+        <div class="url">${urlAtual}</div>
+        <p><strong>Produtos encontrados:</strong> ${produtosEncontrados}</p>
+        ${seletorFuncional ? `<p><strong>Seletor que funcionou:</strong> ${seletorFuncional}</p>` : ''}
+        <p class="timestamp">Diagnóstico gerado em: ${new Date().toLocaleString()}</p>
       </div>
-      <p><strong>Título da página:</strong> ${titulo}</p>
-      <p><strong>URL final:</strong> ${urlAtual}</p>
-      <p><strong>Produtos encontrados:</strong> ${produtosEncontrados}</p>
-      ${bloqueio ? `<p><strong>Motivo:</strong> ${mensagem}</p>` : ''}
-    </div>
-    
-    <div class="card">
+      
+      <div class="acoes">
+        <a href="screenshot.png" target="_blank" class="btn">📸 Ver Screenshot</a>
+        <a href="pagina.html" target="_blank" class="btn">📄 Ver HTML</a>
+        <a href="#" onclick="window.location.reload()" class="btn secondary">🔄 Atualizar</a>
+      </div>
+      
       <h2>📸 Preview do Screenshot</h2>
-      <img src="screenshot.png" class="screenshot-preview" alt="Screenshot">
-    </div>
-    
-    <div class="card">
-      <h2>📁 Arquivos Gerados</h2>
-      <ul class="arquivos">
-        <li><a href="screenshot.png" target="_blank">📸 Ver screenshot completo</a></li>
-        <li><a href="pagina.html" target="_blank">📄 Ver HTML da página</a></li>
-        <li><a href="relatorio.html" target="_blank">📊 Ver relatório detalhado</a></li>
-      </ul>
-    </div>
-    
-    <div class="card">
-      <h2>📋 Instruções</h2>
-      <ol>
-        <li>Clique em "Ver screenshot completo" para ver o print da página</li>
-        <li>Clique em "Ver HTML da página" para ver o código fonte</li>
-        <li>Clique em "Ver relatório detalhado" para análise técnica</li>
-        <li>Se aparecer pedindo login ou desafio, é bloqueio do Mercado Livre</li>
-        <li>Se aparecer produtos, o script funcionou! 🎉</li>
-      </ol>
+      <div class="preview-card">
+        <img src="screenshot.png" alt="Screenshot">
+        <div class="info">
+          <h3>Screenshot da página</h3>
+          <a href="screenshot.png" target="_blank">Ver em tela cheia</a>
+        </div>
+      </div>
+      
+      <h2>📋 Diagnóstico Detalhado</h2>
+      <div class="grid">
+        <div class="preview-card">
+          <div class="info">
+            <h3>${html.length} caracteres</h3>
+            <p>HTML completo da página</p>
+            <a href="pagina.html" target="_blank">Abrir HTML</a>
+          </div>
+        </div>
+        
+        <div class="preview-card">
+          <div class="info">
+            <h3>${requisicoes.length} requisições</h3>
+            <p>Monitoradas durante o carregamento</p>
+            <a href="#" onclick="alert(JSON.stringify(${JSON.stringify(requisicoes.slice(0, 10))}, null, 2))">Ver primeiras 10</a>
+          </div>
+        </div>
+      </div>
+      
+      <h2>📌 Como acessar estes arquivos</h2>
+      <div class="detalhes">
+        <p>URLs diretas:</p>
+        <ul style="margin-top: 10px; list-style: none;">
+          <li>• <strong>Screenshot:</strong> <a href="screenshot.png" target="_blank" style="color: #ffd700;">/diagnostico/screenshot.png</a></li>
+          <li>• <strong>HTML:</strong> <a href="pagina.html" target="_blank" style="color: #ffd700;">/diagnostico/pagina.html</a></li>
+          <li>• <strong>Esta página:</strong> /diagnostico/</li>
+        </ul>
+        <p style="margin-top: 15px;">📎 Caminho completo: https://ofertaprimex.com.br/diagnostico/</p>
+      </div>
     </div>
   </div>
 </body>
@@ -189,22 +297,23 @@ async function diagnosticarMercadoLivre(termo) {
     `;
     
     fs.writeFileSync(visualizacaoPath, visualizacaoHtml);
-    console.log(`✅ Visualização criada: ${visualizacaoPath}`);
     
-    // Mostrar resumo
+    // 5. CRIAR ARQUIVO .htaccess OU Nginx config (opcional)
+    const htaccessPath = path.join(pastaFrontend, '.htaccess');
+    const htaccessContent = `
+Options +Indexes
+DirectoryIndex index.html
+    `;
+    fs.writeFileSync(htaccessPath, htaccessContent);
+    
     console.log('\n' + '='.repeat(50));
-    console.log('📊 RESUMO DO DIAGNÓSTICO:');
+    console.log('✅ DIAGNÓSTICO CONCLUÍDO!');
     console.log('='.repeat(50));
-    console.log(`📁 Pasta: ${pastaResultados}`);
-    console.log(`📌 Título: ${titulo}`);
-    console.log(`📦 Produtos: ${produtosEncontrados}`);
-    if (bloqueio) console.log(`🚫 Bloqueio: ${mensagem}`);
-    console.log('\n📂 Arquivos gerados:');
-    console.log(`   - ${pastaResultados}/screenshot.png`);
-    console.log(`   - ${pastaResultados}/pagina.html`);
-    console.log(`   - ${pastaResultados}/relatorio.html`);
-    console.log(`   - ${pastaResultados}/VER_RESULTADO.html`);
-    console.log('\n👉 Abra o arquivo VER_RESULTADO.html no seu navegador!');
+    console.log(`📁 Pasta no frontend: /${nomePasta}`);
+    console.log(`🌐 Acesse: https://ofertaprimex.com.br/${nomePasta}/`);
+    console.log(`📸 Screenshot: https://ofertaprimex.com.br/${nomePasta}/screenshot.png`);
+    console.log(`📄 HTML: https://ofertaprimex.com.br/${nomePasta}/pagina.html`);
+    console.log('='.repeat(50));
     
     await browser.close();
     
@@ -213,70 +322,6 @@ async function diagnosticarMercadoLivre(termo) {
   } finally {
     if (browser) await browser.close();
   }
-}
-
-function gerarRelatorioHTML(dados) {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Relatório Diagnóstico - ${dados.termo}</title>
-  <style>
-    body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-    .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
-    .bloqueio { background: #ffebee; padding: 15px; border-left: 4px solid #f44336; margin: 20px 0; }
-    .sucesso { background: #e8f5e9; padding: 15px; border-left: 4px solid #4caf50; }
-    .atencao { background: #fff3e0; padding: 15px; border-left: 4px solid #ff9800; }
-    pre { background: #f5f5f5; padding: 10px; overflow: auto; max-height: 300px; }
-    .arquivos { background: #e3f2fd; padding: 15px; border-radius: 5px; }
-    .arquivos a { color: #1976d2; text-decoration: none; }
-    .arquivos a:hover { text-decoration: underline; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🔍 Relatório de Diagnóstico</h1>
-    <p><strong>Termo:</strong> ${dados.termo}</p>
-    <p><strong>Data:</strong> ${new Date().toLocaleString()}</p>
-    
-    <div class="${dados.bloqueio ? 'bloqueio' : dados.produtosEncontrados > 0 ? 'sucesso' : 'atencao'}">
-      <h3>Status: ${dados.bloqueio || (dados.produtosEncontrados > 0 ? 'SUCESSO' : 'Sem produtos')}</h3>
-      <p><strong>Título da página:</strong> ${dados.titulo}</p>
-      <p><strong>URL final:</strong> ${dados.url}</p>
-      <p><strong>Produtos encontrados:</strong> ${dados.produtosEncontrados}</p>
-      ${dados.seletorFuncional ? `<p><strong>Seletor que funcionou:</strong> ${dados.seletorFuncional}</p>` : ''}
-      ${dados.mensagem ? `<p><strong>Mensagem:</strong> ${dados.mensagem}</p>` : ''}
-    </div>
-    
-    <h3>📁 Arquivos Gerados</h3>
-    <div class="arquivos">
-      <ul>
-        <li><a href="screenshot.png" target="_blank">📸 screenshot.png</a> - Print da tela</li>
-        <li><a href="pagina.html" target="_blank">📄 pagina.html</a> - HTML completo</li>
-        <li><a href="VER_RESULTADO.html" target="_blank">👁️ VER_RESULTADO.html</a> - Visualização amigável</li>
-      </ul>
-    </div>
-    
-    <h3>📋 Ações Recomendadas</h3>
-    <ul>
-      ${dados.bloqueio === 'login_required' ? 
-        '<li>O Mercado Livre está pedindo login. Precisamos de uma conta real para testar.</li>' : ''}
-      ${dados.bloqueio === 'challenge' ? 
-        '<li>Desafio de segurança detectado. Precisamos implementar resolução automática ou usar proxy.</li>' : ''}
-      ${dados.bloqueio === 'forbidden' ? 
-        '<li>Acesso proibido. O IP da VPS pode estar bloqueado. Testar com proxy.</li>' : ''}
-      ${!dados.bloqueio && dados.produtosEncontrados === 0 ?
-        '<li>Página carregou mas sem produtos. Pode ser que o Mercado Livre esteja retornando conteúdo diferente.</li>' : ''}
-      ${dados.produtosEncontrados > 0 ?
-        '<li>✅ SUCESSO! O script conseguiu encontrar produtos! Agora podemos evoluir para extrair os dados completos.</li>' : ''}
-    </ul>
-    
-    <h3>📡 Primeiras 20 Requisições</h3>
-    <pre>${JSON.stringify(dados.requisicoes, null, 2)}</pre>
-  </div>
-</body>
-</html>
-  `;
 }
 
 // Executar
