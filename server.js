@@ -1,5 +1,5 @@
 import express from 'express';
-import { runMercadoLivreJob } from './jobs/mercadolivre.job.js';
+//import { runMercadoLivreJob } from './jobs/mercadolivre.job.js';
 
 const app = express();
 app.use(express.json());
